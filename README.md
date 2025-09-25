@@ -18,7 +18,7 @@ O crawler percorre até **15 páginas** de resultados, coleta **títulos** e **U
 1. Clone este repositório: 
 
     ``` 
-    git clone https://github.com/seu-usuario/uspmonitor.git 
+    git clone https://github.com/charlon-156/crewlerusp.git 
     cd uspmonitor 
     ``` 
 
