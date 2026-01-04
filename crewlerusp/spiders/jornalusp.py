@@ -5,49 +5,68 @@ class JornalUspInstitucionalSpider(scrapy.Spider):
     allowed_domains = ["jornal.usp.br"]
     start_urls = ["https://jornal.usp.br/home-institucional/"]
 
-    # paginação
     page_number = 1
-    max_pages = 15
+    max_pages = 30
 
     def parse(self, response):
-        """Coleta os links das notícias listadas"""
+        self.logger.info(f"🔎 Listando página {self.page_number}: {response.url}")
+
+        # Seletores de links de notícia (multiples padrões)
         artigos = response.css("h2.elementor-post__title a::attr(href)").getall()
+        artigos += response.css("article a::attr(href)").getall()
+
+        artigos = list(set(artigos))  # remove duplicados
+
+        if not artigos:
+            self.logger.warning(f"⚠️ Não encontrou artigos na página: {response.url}")
 
         for artigo in artigos:
             yield response.follow(artigo, self.parse_article)
 
-        # Paginação para próximas páginas
         if self.page_number < self.max_pages:
             self.page_number += 1
             next_page = f"https://jornal.usp.br/home-institucional/page/{self.page_number}/"
-            yield response.follow(next_page, callback=self.parse)
+            yield response.follow(next_page, self.parse)
 
     def parse_article(self, response):
-        """Extrai título, texto e procura palavras-chave"""
-        # Título compatível com variações
-        titulo = response.css("h1.elementor-heading-title::text").get() \
-            or response.css("h1::text").get()
+        self.logger.info(f"➡️ Abrindo matéria: {response.url}")
 
-        # Pega parágrafos do corpo
+        # Tenta múltiplos seletores de título
+        titulo = response.css("h1.elementor-heading-title::text").get()
+        if not titulo:
+            titulo = response.css("h1.entry-title::text").get()
+
+        # Pega textos gerais do corpo
         paragrafos = response.css("div.elementor-widget-container p::text").getall()
+        if not paragrafos:
+            # fallback, tenta outra estrutura
+            paragrafos = response.css("div.post-content p::text").getall()
+
         conteudo = " ".join(paragrafos).strip()
 
-        # Normalização
+        self.logger.debug(f"Título capturado: {titulo}")
+        self.logger.debug(f"Conteúdo capturado (primeiros 100 chars): {conteudo[:100]}")
+
         titulo_norm = (titulo or "").lower()
         conteudo_norm = (conteudo or "").lower()
 
-        # Palavras de busca
         palavras = [
             "pro clima", "proclima", "usp pro clima", "usp proclima",
-            "patrícia iglecias"
+            "patrícia iglecias", "jorge tenório", "fernanda brando",
+            "edimilson freitas", "ildo sauer", "mudanças climáticas",
+            "sustentabilidade"
         ]
 
-        # Procura palavras e retorna item
+        encontrado = False
         for palavra in palavras:
             if palavra.lower() in titulo_norm or palavra.lower() in conteudo_norm:
+                encontrado = True
                 yield {
                     "titulo": titulo.strip() if titulo else None,
                     "url": response.url,
                     "palavra_encontrada": palavra,
                 }
-                break  # evita duplicados
+                break
+
+        if not encontrado:
+            self.logger.info(f"❌ Nenhuma palavra encontrada na matéria: {response.url}")
